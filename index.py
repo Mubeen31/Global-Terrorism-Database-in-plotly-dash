@@ -7,10 +7,13 @@ import pandas as pd
 
 terr2 = pd.read_csv('modified_globalterrorismdb_0718dist.csv')
 
+location1 = terr2[['country_txt', 'latitude', 'longitude']]
+list_locations = location1.set_index('country_txt')[['latitude', 'longitude']].T.to_dict('dict')
+
 region = terr2['region_txt'].unique()
 
 app = dash.Dash(__name__, )
-app.layout = html.Div((
+app.layout = html.Div([
 
     html.Div([
         html.Div([
@@ -25,17 +28,12 @@ app.layout = html.Div((
 
     html.Div([
         html.Div([
-            html.P('Select Year:', className = 'fix_label', style = {'color': 'white', 'margin-left': '1%'}),
-            dcc.RangeSlider(id = 'select_years',
-                            min = 1970,
-                            max = 2017,
-                            dots = True,
-                            value = [2010, 2017],
-                            marks = {str(yr): str(yr) for yr in range(1970, 2017, 4)}),
+            dcc.Graph(id = 'map_1',
+                      config = {'displayModeBar': 'hover'}),
 
-        ], className = "create_container twelve columns", style = {'width': '98%', 'margin-left': '1%'}),
+        ], className = "create_container 12 columns"),
 
-    ], className = 'row flex-display'),
+    ], className = "row flex-display"),
 
     html.Div([
         html.Div([
@@ -57,7 +55,14 @@ app.layout = html.Div((
                          disabled = False,
                          style = {'display': True},
                          placeholder = 'Select Countries',
-                         options = [], className = 'dcc_compon')
+                         options = [], className = 'dcc_compon'),
+
+            html.P('Select Year:', className = 'fix_label', style = {'color': 'white', 'margin-left': '1%'}),
+            dcc.RangeSlider(id = 'select_years',
+                            min = 1970,
+                            max = 2017,
+                            dots = False,
+                            value = [2010, 2017]),
 
         ], className = "create_container three columns"),
 
@@ -75,17 +80,7 @@ app.layout = html.Div((
 
     ], className = "row flex-display"),
 
-    # Create scattermapbox chart
-    html.Div([
-        html.Div([
-            dcc.Graph(id = 'map_1',
-                      config = {'displayModeBar': 'hover'}),
-
-        ], className = "create_container 12 columns"),
-
-    ], className = "row flex-display"),
-
-), id = "mainContainer", style = {"display": "flex", "flex-direction": "column"})
+], id = "mainContainer", style = {"display": "flex", "flex-direction": "column"})
 
 
 @app.callback(
@@ -102,7 +97,62 @@ def get_country_options(w_countries):
 def get_country_value(w_countries1):
     return [k['value'] for k in w_countries1][0]
 
+# Create scattermapbox chart
+@app.callback(Output('map_1', 'figure'),
+              [Input('w_countries', 'value')],
+              [Input('w_countries1', 'value')],
+              [Input('select_years', 'value')])
+def update_graph(w_countries, w_countries1, select_years):
+    terr3 = terr2.groupby(['region_txt', 'country_txt', 'provstate', 'city', 'iyear', 'latitude', 'longitude'])[['nkill', 'nwound']].sum().reset_index()
+    terr4 = terr3[(terr3['region_txt'] == w_countries) & (terr3['country_txt'] == w_countries1) & (terr3['iyear'] >= select_years[0]) & (terr3['iyear'] <= select_years[1])]
 
+    if w_countries1:
+        zoom = 3
+        zoom_lat = list_locations[w_countries1]['latitude']
+        zoom_lon = list_locations[w_countries1]['longitude']
+
+
+    return {
+        'data': [go.Scattermapbox(
+            lon = terr4['longitude'],
+            lat = terr4['latitude'],
+            mode = 'markers',
+            marker = go.scattermapbox.Marker(
+                size = terr4['nwound'],
+                color = terr4['nwound'],
+                colorscale = 'hsv',
+                showscale = False,
+                sizemode = 'area'),
+
+            hoverinfo = 'text',
+            hovertext =
+            '<b>Region</b>: ' + terr4['region_txt'].astype(str) + '<br>' +
+            '<b>Country</b>: ' + terr4['country_txt'].astype(str) + '<br>' +
+            '<b>Province/State</b>: ' + terr4['provstate'].astype(str) + '<br>' +
+            '<b>City</b>: ' + terr4['city'].astype(str) + '<br>' +
+            '<b>Longitude</b>: ' + terr4['longitude'].astype(str) + '<br>' +
+            '<b>Latitude</b>: ' + terr4['latitude'].astype(str) + '<br>' +
+            '<b>Killed</b>: ' + [f'{x:,.0f}' for x in terr4['nkill']] + '<br>' +
+            '<b>Wounded</b>: ' + [f'{x:,.0f}' for x in terr4['nwound']] + '<br>' +
+            '<b>Year</b>: ' + terr4['iyear'].astype(str) + '<br>'
+
+        )],
+
+        'layout': go.Layout(
+            margin = {"r": 0, "t": 0, "l": 0, "b": 0},
+            hovermode = 'closest',
+            mapbox = dict(
+                accesstoken = 'pk.eyJ1IjoicXM2MjcyNTI3IiwiYSI6ImNraGRuYTF1azAxZmIycWs0cDB1NmY1ZjYifQ.I1VJ3KjeM-S613FLv3mtkw',  # Use mapbox token here
+                center = go.layout.mapbox.Center(lat = zoom_lat, lon = zoom_lon),
+                # style='open-street-map',
+                style = 'dark',
+                zoom = zoom
+            ),
+            autosize = True,
+
+        )
+
+    }
 
 # Create combination of bar and line  chart (show number of attack and death)
 @app.callback(Output('bar_line_1', 'figure'),
@@ -291,56 +341,6 @@ def display_content(w_countries, w_countries1, select_years):
     }
 
 
-# Create scattermapbox chart
-@app.callback(Output('map_1', 'figure'),
-              [Input('w_countries', 'value')],
-              [Input('w_countries1', 'value')],
-              [Input('select_years', 'value')])
-def update_graph(w_countries, w_countries1, select_years):
-    terr3 = terr2.groupby(['region_txt', 'country_txt', 'provstate', 'city', 'iyear', 'latitude', 'longitude'])[['nkill', 'nwound']].sum().reset_index()
-    terr4 = terr3[(terr3['region_txt'] == w_countries) & (terr3['country_txt'] == w_countries1) & (terr3['iyear'] >= select_years[0]) & (terr3['iyear'] <= select_years[1])]
-
-    return {
-        'data': [go.Scattermapbox(
-            lon = terr4['longitude'],
-            lat = terr4['latitude'],
-            mode = 'markers',
-            marker = go.scattermapbox.Marker(
-                size = terr4['nkill'] / 3,
-                color = terr4['nkill'],
-                colorscale = 'hsv',
-                showscale = False,
-                sizemode = 'area'),
-
-            hoverinfo = 'text',
-            hovertext =
-            '<b>Region</b>: ' + terr4['region_txt'].astype(str) + '<br>' +
-            '<b>Country</b>: ' + terr4['country_txt'].astype(str) + '<br>' +
-            '<b>Province/State</b>: ' + terr4['provstate'].astype(str) + '<br>' +
-            '<b>City</b>: ' + terr4['city'].astype(str) + '<br>' +
-            '<b>Longitude</b>: ' + terr4['longitude'].astype(str) + '<br>' +
-            '<b>Latitude</b>: ' + terr4['latitude'].astype(str) + '<br>' +
-            '<b>Killed</b>: ' + [f'{x:,.0f}' for x in terr4['nkill']] + '<br>' +
-            '<b>Wounded</b>: ' + [f'{x:,.0f}' for x in terr4['nwound']] + '<br>' +
-            '<b>Year</b>: ' + terr4['iyear'].astype(str) + '<br>'
-
-        )],
-
-        'layout': go.Layout(
-            margin = {"r": 0, "t": 0, "l": 0, "b": 0},
-            hovermode = 'closest',
-            mapbox = dict(
-                accesstoken = 'pk.eyJ1IjoicXM2MjcyNTI3IiwiYSI6ImNraGRuYTF1azAxZmIycWs0cDB1NmY1ZjYifQ.I1VJ3KjeM-S613FLv3mtkw',  # Use mapbox token here
-                center = go.layout.mapbox.Center(lat = 36, lon = -5.4),
-                # style='open-street-map',
-                style = 'dark',
-                zoom = 1.2
-            ),
-            autosize = True,
-
-        )
-
-    }
 
 
 if __name__ == '__main__':
