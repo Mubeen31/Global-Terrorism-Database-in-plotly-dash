@@ -1,5 +1,4 @@
 # Global-Terrorism-Database-in-plotly-dash
-View on live server. https://globalterrorismdatabase.herokuapp.com/
 
 <!-- View on youtube. https://www.youtube.com/watch?v=TsYwhX0hEA8&t=1s -->
 
